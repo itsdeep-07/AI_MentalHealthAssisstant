@@ -1,0 +1,15 @@
+# Python / Virtual Environment
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.env
+
+# Data files (Don't track live stress data)
+data.json
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store

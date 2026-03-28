@@ -1,0 +1,7 @@
+streamlit
+streamlit-autorefresh
+pynput
+opencv-python
+deepface
+tf-keras
+pandas
