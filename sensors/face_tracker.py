@@ -14,11 +14,16 @@ def read_data():
                 return json.load(f)
         except Exception:
             pass
-    return {"current_wpm": 0, "backspace_count": 0, "current_emotion": "Neutral", "stress_level_score": 0}
+    return {
+        "current_wpm": 0, "backspace_count": 0, "current_emotion": "Neutral", "stress_level_score": 0,
+        "total_keypresses": 0, "typo_rate": 0.0, "frustration_deletes": 0, "rhythm_variability": 0.0,
+        "pause_count": 0, "emotion_duration_seconds": 0
+    }
 
-def write_emotion(emotion):
+def write_emotion(emotion, duration):
     current = read_data()
     current["current_emotion"] = emotion
+    current["emotion_duration_seconds"] = duration
     with open(DATA_FILE, "w") as f:
         json.dump(current, f)
 
@@ -26,10 +31,13 @@ def start():
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         print("Camera not available. Face tracker exiting.")
-        write_emotion("Neutral")
+        write_emotion("Neutral", 0)
         return
 
     print("Face tracker running...")
+    previous_emotion = None
+    emotion_start_time = None
+
     while True:
         ret, frame = cap.read()
         if not ret:
@@ -44,10 +52,17 @@ def start():
             )
             emotion = result[0]["dominant_emotion"].capitalize()
         except Exception as e:
-            print(f"DeepFace Exception: {e}")
             emotion = "Neutral"
 
-        write_emotion(emotion)
+        now = time.time()
+        if emotion == previous_emotion:
+            duration = int(now - emotion_start_time) if emotion_start_time else 0
+        else:
+            emotion_start_time = now
+            duration = 0
+            previous_emotion = emotion
+
+        write_emotion(emotion, duration)
         time.sleep(2)
 
     cap.release()

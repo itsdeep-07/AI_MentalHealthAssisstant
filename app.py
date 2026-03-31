@@ -1,4 +1,5 @@
 import streamlit as st
+from datetime import datetime, timedelta
 from streamlit_autorefresh import st_autorefresh
 import json
 import os
@@ -22,6 +23,10 @@ init_db()
 for key, val in {
     "user_id": None,
     "session_id": None,
+    "session_start_time": None,
+    "break_due_at": None,
+    "break_active": False,
+    "break_start": None,
     "last_event_id": None,
     "last_intervention_id": None,
     "intervention_pending_feedback": False,
@@ -44,6 +49,8 @@ if st.session_state.user_id is None:
                 selected = next(u for u in users if u["name"] == choice)
                 st.session_state.user_id = selected["user_id"]
                 st.session_state.session_id = start_session(selected["user_id"])
+                st.session_state.session_start_time = datetime.now()
+                st.session_state.break_due_at = datetime.now() + timedelta(minutes=20)
                 st.rerun()
 
     with st.expander("Create a new profile"):
@@ -52,6 +59,8 @@ if st.session_state.user_id is None:
             uid = create_user(new_name.strip())
             st.session_state.user_id = uid
             st.session_state.session_id = start_session(uid)
+            st.session_state.session_start_time = datetime.now()
+            st.session_state.break_due_at = datetime.now() + timedelta(minutes=20)
             st.rerun()
     st.stop()
 
@@ -70,7 +79,10 @@ st_autorefresh(interval=2000, limit=None, key="data_refresh")
 user = get_user(st.session_state.user_id)
 baseline = get_baseline(st.session_state.user_id)
 data = get_sensor_data()
-stress_score = calculate_stress(data, baseline)
+session_minutes = 0
+if st.session_state.session_start_time:
+    session_minutes = (datetime.now() - st.session_state.session_start_time).seconds / 60
+stress_score = calculate_stress(data, baseline, session_minutes)
 stress_level = get_stress_level(stress_score)
 
 # ── Save reading to DB every refresh ─────────────────────────────────────────
@@ -79,7 +91,12 @@ save_reading(
     data.get("current_wpm", 0),
     data.get("backspace_count", 0),
     data.get("current_emotion", "neutral"),
-    stress_score
+    stress_score,
+    data.get("typo_rate", 0.0),
+    data.get("frustration_deletes", 0),
+    data.get("rhythm_variability", 0.0),
+    data.get("pause_count", 0),
+    data.get("emotion_duration_seconds", 0)
 )
 
 # ── Header ────────────────────────────────────────────────────────────────────
@@ -97,17 +114,54 @@ with col_user:
 
 st.divider()
 
+# ── 20-20-20 Eye Break System ─────────────────────────────────────────────────
+if st.session_state.break_due_at and datetime.now() >= st.session_state.break_due_at:
+    if not st.session_state.break_active:
+        st.session_state.break_active = True
+        st.session_state.break_start = datetime.now()
+
+if st.session_state.break_active:
+    st.markdown('<div style="background-color:rgba(0,128,128,0.1); padding:20px; border-radius:10px; border:1px solid teal; text-align:center; margin-bottom: 20px;">'
+                '<h3 style="color:teal; margin-top:0;">👁️ Time for a 20-20-20 break</h3>'
+                '<p>Look at something 20 feet away to reduce eye strain and mental fatigue.</p>'
+                '</div>', unsafe_allow_html=True)
+                
+    elapsed = (datetime.now() - st.session_state.break_start).seconds
+    remaining = max(0, 20 - elapsed)
+    
+    st.progress(min(1.0, elapsed / 20.0))
+    st.caption(f"Waiting for {remaining} seconds...")
+    
+    if remaining <= 0:
+        st.session_state.break_active = False
+        st.session_state.break_due_at = datetime.now() + timedelta(minutes=20)
+        st.rerun()
+
+
 # ── Metrics row ───────────────────────────────────────────────────────────────
-c1, c2, c3, c4 = st.columns(4)
+c1, c2, c3 = st.columns(3)
+c4, c5, c6 = st.columns(3)
+
 with c1:
-    st.metric("Typing speed", f"{data.get('current_wpm', 0)} WPM",
-              delta=f"Baseline: {baseline['avg_wpm']:.0f}" if baseline and baseline['avg_wpm'] else None)
+    delta_wpm = None
+    if baseline and baseline.get('avg_wpm', 0) > 0:
+        diff_pct = (data.get('current_wpm', 0) / baseline['avg_wpm']) * 100 - 100
+        delta_wpm = f"+{diff_pct:.0f}% above baseline" if diff_pct > 0 else "Normal"
+    st.metric("Typing speed", f"{data.get('current_wpm', 0)} WPM", delta=delta_wpm, delta_color="inverse" if delta_wpm != "Normal" else "normal")
 with c2:
-    st.metric("Backspaces", f"{data.get('backspace_count', 0)}",
-              delta=f"Baseline: {baseline['avg_backspace_rate']:.1f}" if baseline and baseline['avg_backspace_rate'] else None)
+    delta_bs = None
+    if baseline and baseline.get('avg_backspace_rate', 0) > 0:
+        diff_pct = (data.get('backspace_count', 0) / (baseline['avg_backspace_rate']+0.1)) * 100 - 100
+        delta_bs = f"+{diff_pct:.0f}% above baseline" if diff_pct > 0 else "Normal"
+    st.metric("Backspaces", f"{data.get('backspace_count', 0)}", delta=delta_bs, delta_color="inverse" if delta_bs != "Normal" else "normal")
 with c3:
     st.metric("Detected emotion", data.get("current_emotion", "Neutral"))
 with c4:
+    typo_pct = data.get("typo_rate", 0.0) * 100
+    st.metric("Typo rate", f"{typo_pct:.1f}%")
+with c5:
+    st.metric("Session time", f"{int(session_minutes)} min")
+with c6:
     st.metric("Stress score", f"{stress_score}/100")
 
 # ── Stress bar ────────────────────────────────────────────────────────────────
@@ -137,6 +191,24 @@ if stress_score >= 70:
         st.session_state.last_event_id = event_id
 
     st.markdown("### Elevated stress detected")
+    trigger_labels = {
+        "high_wpm": "Typing faster than usual",
+        "high_typo_rate": "High error rate in typing",
+        "frustration_deletes": "Repeated aggressive deletions detected",
+        "erratic_rhythm": "Irregular typing rhythm",
+        "frequent_pauses": "Frequent mid-session pauses",
+        "negative_emotion": "Sustained negative facial expression",
+        "typing_speed": "Typing faster than usual",
+        "typing_errors": "High error rate",
+        "facial_expression": "Sustained negative emotion"
+    }
+    trigger_list = [t.strip() for t in trigger.split(",") if t.strip()]
+    if trigger_list and trigger_list[0] != "unknown":
+        with st.expander("Why was this triggered?"):
+            for t in trigger_list:
+                label = trigger_labels.get(t, t)
+                st.markdown(f"• {label}")
+
     st.write("Based on your typing patterns and facial expression, here is a short exercise.")
 
     tab1, tab2, tab3 = st.tabs(["Box breathing", "Posture check", "Screen break"])

@@ -74,6 +74,19 @@ def init_db():
             FOREIGN KEY (intervention_id) REFERENCES interventions(intervention_id)
         );
     """)
+    # Auto-migrations
+    try:
+        c.execute("ALTER TABLE sensor_readings ADD COLUMN typo_rate REAL DEFAULT 0")
+        c.execute("ALTER TABLE sensor_readings ADD COLUMN frustration_deletes INTEGER DEFAULT 0")
+        c.execute("ALTER TABLE sensor_readings ADD COLUMN rhythm_variability REAL DEFAULT 0")
+        c.execute("ALTER TABLE sensor_readings ADD COLUMN pause_count INTEGER DEFAULT 0")
+        c.execute("ALTER TABLE sensor_readings ADD COLUMN emotion_duration INTEGER DEFAULT 0")
+    except Exception:
+        pass
+    try:
+        c.execute("ALTER TABLE user_baseline ADD COLUMN avg_typo_rate REAL DEFAULT 0")
+    except Exception:
+        pass
     conn.commit()
     conn.close()
 
@@ -120,12 +133,12 @@ def end_session(session_id):
     conn.commit()
     conn.close()
 
-def save_reading(session_id, wpm, backspaces, emotion, stress_score):
+def save_reading(session_id, wpm, backspaces, emotion, stress_score, typo_rate=0.0, frustration_deletes=0, rhythm_variability=0.0, pause_count=0, emotion_duration=0):
     conn = get_connection()
     c = conn.cursor()
     c.execute(
-        "INSERT INTO sensor_readings (session_id, current_wpm, backspace_count, detected_emotion, stress_score) VALUES (?,?,?,?,?)",
-        (session_id, wpm, backspaces, emotion, stress_score)
+        "INSERT INTO sensor_readings (session_id, current_wpm, backspace_count, detected_emotion, stress_score, typo_rate, frustration_deletes, rhythm_variability, pause_count, emotion_duration) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (session_id, wpm, backspaces, emotion, stress_score, typo_rate, frustration_deletes, rhythm_variability, pause_count, emotion_duration)
     )
     conn.commit()
     conn.close()
@@ -173,15 +186,15 @@ def get_baseline(user_id):
     conn.close()
     return dict(row) if row else None
 
-def update_baseline(user_id, avg_wpm, avg_backspace_rate, dominant_emotion):
+def update_baseline(user_id, avg_wpm, avg_backspace_rate, avg_typo_rate, dominant_emotion):
     conn = get_connection()
     c = conn.cursor()
     c.execute(
         """UPDATE user_baseline
-           SET avg_wpm = ?, avg_backspace_rate = ?, dominant_emotion = ?,
+           SET avg_wpm = ?, avg_backspace_rate = ?, avg_typo_rate = ?, dominant_emotion = ?,
                last_updated = CURRENT_TIMESTAMP
            WHERE user_id = ?""",
-        (avg_wpm, avg_backspace_rate, dominant_emotion, user_id)
+        (avg_wpm, avg_backspace_rate, avg_typo_rate, dominant_emotion, user_id)
     )
     conn.commit()
     conn.close()
@@ -213,9 +226,11 @@ def compute_and_update_baseline(user_id, session_id):
     wpms = [r["current_wpm"] for r in readings if r["current_wpm"] > 0]
     backspaces = [r["backspace_count"] for r in readings]
     emotions = [r["detected_emotion"] for r in readings]
+    typo_rates = [r.get("typo_rate", 0.0) for r in readings]
     if not wpms:
         return
     avg_wpm = sum(wpms) / len(wpms)
     avg_bs = sum(backspaces) / len(backspaces)
+    avg_tr = sum(typo_rates) / len(typo_rates) if typo_rates else 0.0
     dominant = max(set(emotions), key=emotions.count)
-    update_baseline(user_id, avg_wpm, avg_bs, dominant)
+    update_baseline(user_id, avg_wpm, avg_bs, avg_tr, dominant)
