@@ -50,7 +50,21 @@ def start():
                 enforce_detection=False,
                 silent=True
             )
-            emotion = result[0]["dominant_emotion"].capitalize()
+            res = result[0] if isinstance(result, list) else result
+            emotions = res.get("emotion", {})
+            
+            # Demo Mode: Highly sensitive thresholds for stress/anxiety
+            negative_score = emotions.get("sad", 0) + emotions.get("angry", 0) + emotions.get("fear", 0) + emotions.get("disgust", 0)
+            
+            if negative_score > 25:
+                emotion = "Anxious"
+            elif negative_score > 8:
+                emotion = "Stress"
+            elif emotions.get("happy", 0) > 10:
+                emotion = "Happy"
+            else:
+                emotion = res.get("dominant_emotion", "Neutral").capitalize()
+                
         except Exception as e:
             emotion = "Neutral"
 

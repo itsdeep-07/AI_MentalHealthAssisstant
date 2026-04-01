@@ -27,16 +27,16 @@ def calculate_stress(data, baseline, session_minutes=0):
             
     if baseline and baseline.get("avg_typo_rate", 0) > 0:
         avg_tr = baseline["avg_typo_rate"]
-        if typo_rate > avg_tr + 0.15:
+        if typo_rate > avg_tr + 0.05:
             score += 25
-        elif typo_rate > avg_tr + 0.08:
+        elif typo_rate > avg_tr + 0.02:
             score += 15
         elif typo_rate > avg_tr + 0.04:
             score += 8
     else:
-        if typo_rate > 0.25:
+        if typo_rate > 0.10:
             score += 25
-        elif typo_rate > 0.15:
+        elif typo_rate > 0.05:
             score += 15
         elif typo_rate > 0.08:
             score += 8
@@ -53,7 +53,7 @@ def calculate_stress(data, baseline, session_minutes=0):
 
     if pause_count > 10:
         score += 10
-    elif pause_count > 5:
+    elif pause_count > 2:
         score += 5
 
     if emotion in ["angry", "sad", "fear", "disgust"]:
@@ -112,7 +112,7 @@ def get_trigger_type(data, baseline):
         if typo_rate > baseline["avg_typo_rate"] + 0.15:
             triggers.append("high_typo_rate")
     else:
-        if typo_rate > 0.15:
+        if typo_rate > 0.05:
             triggers.append("high_typo_rate")
             
     if frustration_deletes >= 1:
@@ -121,7 +121,7 @@ def get_trigger_type(data, baseline):
     if rhythm_variability > 0.4:
         triggers.append("erratic_rhythm")
         
-    if pause_count > 5:
+    if pause_count > 2:
         triggers.append("frequent_pauses")
 
     if emotion in ["angry", "sad", "fear", "disgust"] and emotion_duration > 20:
