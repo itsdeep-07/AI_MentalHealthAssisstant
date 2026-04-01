@@ -1,7 +1,13 @@
 import sqlite3
 import os
+import streamlit as st
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mental_health.db")
+# Try to get DB path from Streamlit secrets, fallback to local file
+try:
+    DB_PATH = st.secrets.get("db_path", os.path.join(os.path.dirname(os.path.abspath(__file__)), "mental_health.db"))
+except (FileNotFoundError, AttributeError):
+    # If running outside Streamlit context, use local path
+    DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mental_health.db")
 
 def get_connection():
     conn = sqlite3.connect(DB_PATH)
