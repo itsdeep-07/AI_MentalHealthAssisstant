@@ -8,6 +8,7 @@ env/
 
 # Data files (Don't track live stress data)
 data.json
+*.db
 
 # IDE / OS
 .vscode/
